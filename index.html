@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- SEO Meta Tags -->
+  <title>Local ID Scanner & A4 PDF Compiler | Privacy-First ID Document Warper</title>
+  <meta name="description" content="Completely local in-browser tool to upload photos of ID cards, apply perspective warping correction, convert to high-contrast B&W, and arrange on an A4 page to export as a physical-size PDF.">
+  <meta name="keywords" content="ID Scanner, Perspective Correction, PDF Compiler, Local OCR, Document Warper, A4 PDF Printing, Grayscale Photocopy, Privacy-First Scanner">
+  
+  <!-- Styling -->
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- jsPDF Library for local PDF Generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header" id="app-header">
+    <div class="logo-container">
+      <div class="logo-icon" id="app-logo-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px; height: 20px;">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v16.5h16.5V3.75H3.75zm2.25 3h12v1.5h-12V6.75zm0 3.75h12v1.5h-12v-1.5zm0 3.75h8.25v1.5H6V14.25z" />
+        </svg>
+      </div>
+      <h1 class="logo-text" id="app-logo-title">IDScanPDF</h1>
+    </div>
+    
+    <div class="privacy-badge" id="app-privacy-badge">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" style="width: 14px; height: 14px;">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
+      </svg>
+      <span>100% Local & Privacy-First</span>
+    </div>
+  </header>
+
+  <!-- App Shell -->
+  <main class="app-container" id="main-app-container">
+    
+    <!-- Sidebar Control (Uploads & Processed Gallery) -->
+    <aside class="sidebar" id="app-sidebar" aria-label="Sidebar files and library controls">
+      
+      <!-- Drag & Drop Upload Zone -->
+      <section aria-labelledby="section-upload" id="sidebar-upload-section">
+        <h2 class="section-title" id="section-upload">1. Upload ID Images</h2>
+        <div class="dropzone" id="upload-dropzone">
+          <div class="dropzone-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 24px; height: 24px;">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+            </svg>
+          </div>
+          <div class="dropzone-text">Drag & drop photos here</div>
+          <div class="dropzone-subtext">or click to browse from device</div>
+          <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
+        </div>
+      </section>
+
+      <!-- Original Uploaded Files Queue -->
+      <section aria-labelledby="section-originals" id="sidebar-queue-section">
+        <h2 class="section-title" id="section-originals">Uploaded Queue</h2>
+        <div class="queue-list" id="queue-list">
+          <!-- Populated dynamically via JS -->
+          <div class="queue-empty-state" style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 12px; border: 1px dashed var(--border-light); border-radius: 8px;">
+            No photos uploaded yet
+          </div>
+        </div>
+      </section>
+
+      <!-- Processed Images Gallery -->
+      <section aria-labelledby="section-gallery" id="sidebar-gallery-section">
+        <h2 class="section-title" id="section-gallery">2. Cropped Cards Gallery</h2>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px; line-height: 1.3;">
+          Click/drag these items onto the A4 page layout compile workspace.
+        </p>
+        <div class="gallery-grid" id="gallery-grid">
+          <!-- Populated dynamically via JS -->
+          <div class="gallery-empty-state" id="gallery-empty-msg">
+            Crop images above first to populate card library
+          </div>
+        </div>
+      </section>
+
+    </aside>
+
+    <!-- Main Central Workspace -->
+    <div class="workspace" id="app-workspace">
+      
+      <!-- Nav Tabs -->
+      <nav class="tabs-bar" id="app-tabs-navigation" aria-label="Workspace tabs navigation">
+        <button class="tab-btn active" id="tab-btn-crop" data-target="crop-panel">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
+          </svg>
+          1. Perspective Crop & Warp
+        </button>
+        <button class="tab-btn" id="tab-btn-compiler" data-target="compiler-panel">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+          </svg>
+          2. Compile A4 Print Sheet
+        </button>
+      </nav>
+
+      <!-- Panel 1: Crop Workspace -->
+      <section class="tab-content active perspective-editor-panel" id="crop-panel" aria-labelledby="tab-btn-crop">
+        
+        <!-- Perspective Crop Toolbar -->
+        <div class="workspace-toolbar" id="crop-toolbar">
+          <div class="toolbar-group">
+            <span class="toolbar-label">Preset Ratio:</span>
+            <select class="select-input" id="crop-ratio-preset">
+              <option value="auto">Auto-detect Aspect (Free)</option>
+              <option value="1.5858">ID-1 Card (Credit / Driver ID: 85.6x54mm)</option>
+              <option value="1.4142">A4 Page Ratio (297x210mm)</option>
+              <option value="1.0">Square ID Photo (1:1)</option>
+              <option value="custom">Custom Ratio...</option>
+            </select>
+            <div id="crop-custom-ratio-inputs" style="display: none; align-items: center; gap: 6px;">
+              <input type="number" class="text-input num-input-small" id="crop-ratio-w" placeholder="W" value="3">
+              <span style="color: var(--text-muted);">:</span>
+              <input type="number" class="text-input num-input-small" id="crop-ratio-h" placeholder="H" value="2">
+            </div>
+          </div>
+
+          <!-- Crop Corners Mode Checkbox -->
+          <div class="toolbar-group" id="crop-corners-group">
+            <label for="crop-round-corners" style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-secondary); cursor: pointer; user-select: none;">
+              <input type="checkbox" id="crop-round-corners" checked>
+              <span>Auto-Round Corners (6%)</span>
+            </label>
+          </div>
+
+          <!-- Crop Workspace Zoom Controls -->
+          <div class="toolbar-group" id="crop-zoom-group">
+            <span class="toolbar-label">Editor Zoom:</span>
+            <button class="btn-secondary btn-mini" id="btn-crop-zoom-out" title="Zoom Out" style="padding: 4px 10px;">-</button>
+            <input type="range" class="range-slider" id="crop-zoom-slider" min="1" max="4" step="0.25" value="1" style="width: 80px; margin: 0 4px;">
+            <button class="btn-secondary btn-mini" id="btn-crop-zoom-in" title="Zoom In" style="padding: 4px 10px;">+</button>
+            <span id="crop-zoom-val" style="font-size: 0.8rem; color: var(--accent-indigo); font-weight: 600; min-width: 40px; text-align: right;">100%</span>
+          </div>
+          
+          <div class="toolbar-group">
+            <button class="btn-secondary" id="btn-crop-rotate-ccw" title="Rotate original photo 90 degrees CCW">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 16px; height: 16px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-6 6m0 0l-6-6m6 6V9a6 6 0 0112 0v3" />
+              </svg>
+              Rotate
+            </button>
+            
+            <button class="btn-primary" id="btn-save-crop">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 16px; height: 16px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+              Warp & Save Card
+            </button>
+          </div>
+        </div>
+
+        <!-- Dynamic Editing Canvas Area -->
+        <div class="editor-viewport" id="crop-viewport">
+          
+          <!-- Notice when no original image is selected -->
+          <div class="workspace-empty-notice" id="crop-empty-notice">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+            </svg>
+            <h3>Select a photo to begin cropping</h3>
+            <p>Upload files or choose an original photo from the sidebar to align the perspective corners.</p>
+          </div>
+
+          <!-- Active editor cropping area -->
+          <div class="crop-container" id="crop-container" style="display: none;">
+            <canvas class="crop-canvas" id="crop-canvas"></canvas>
+            
+            <!-- Lines overlay linking the handles -->
+            <svg class="handles-svg" id="handles-svg">
+              <line id="line-0-1" x1="0" y1="0" x2="0" y2="0" />
+              <line id="line-1-2" x1="0" y1="0" x2="0" y2="0" />
+              <line id="line-2-3" x1="0" y1="0" x2="0" y2="0" />
+              <line id="line-3-0" x1="0" y1="0" x2="0" y2="0" />
+            </svg>
+
+            <!-- Handles -->
+            <div class="crop-handle" id="handle-0" data-index="0" title="Top Left Corner"></div>
+            <div class="crop-handle" id="handle-1" data-index="1" title="Top Right Corner"></div>
+            <div class="crop-handle" id="handle-2" data-index="2" title="Bottom Right Corner"></div>
+            <div class="crop-handle" id="handle-3" data-index="3" title="Bottom Left Corner"></div>
+
+            <!-- Magnifier Glass -->
+            <div class="magnifier-lens" id="magnifier-lens">
+              <canvas class="magnifier-canvas" id="magnifier-canvas" width="160" height="160"></canvas>
+              <div class="magnifier-reticle"></div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- Panel 2: A4 Compiler Canvas Layout -->
+      <section class="tab-content compiler-panel" id="compiler-panel" aria-labelledby="tab-btn-compiler">
+        
+        <!-- Interactive compiler area -->
+        <div class="compiler-workspace" id="compiler-workspace">
+          
+          <!-- Initial warning if no page is active -->
+          <div class="workspace-empty-notice" id="compiler-empty-notice" style="display: none;">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3>No sheets active</h3>
+            <p>Click "Add A4 Page" in the toolbar to start arranging your document layouts.</p>
+          </div>
+
+          <!-- Scrollable page elements go here -->
+          <div id="pages-container" style="display: flex; flex-direction: column; gap: 40px; align-items: center; width: 100%;">
+            <!-- Single A4 Page template loaded via JavaScript -->
+          </div>
+
+        </div>
+
+        <!-- A4 Page Control Toolbar / Properties Panel -->
+        <aside class="inspector-panel" id="inspector-panel" aria-label="Page and Image Properties Inspector">
+          
+          <!-- Workspace Options -->
+          <section class="inspector-section" aria-labelledby="inspector-workspace-title">
+            <h3 class="section-title" id="inspector-workspace-title">Workspace Actions</h3>
+            <button class="btn-primary" id="btn-add-page" style="width: 100%;">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 16px; height: 16px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Add A4 Page
+            </button>
+            <div class="inspector-row">
+              <label for="toggle-grid">Show Grid & Rulers</label>
+              <input type="checkbox" id="toggle-grid" checked>
+            </div>
+            <button class="btn-secondary" id="btn-clear-workspace" style="width: 100%;">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 14px; height: 14px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+              </svg>
+              Clear Workspace
+            </button>
+          </section>
+
+          <!-- Placement Alignment tools -->
+          <section class="inspector-section" aria-labelledby="inspector-align-title">
+            <h3 class="section-title" id="inspector-align-title">Auto Layout</h3>
+            <div class="align-grid">
+              <button class="btn-icon-label" id="btn-align-center" title="Center selected image horizontally on A4 page">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18M8 6h8M6 12h12M8 18h8" />
+                </svg>
+                <span>Center H</span>
+              </button>
+              
+              <button class="btn-icon-label" id="btn-align-grid" title="Auto arrange all items on the page in a neat grid">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z" />
+                </svg>
+                <span>Grid Auto</span>
+              </button>
+
+              <button class="btn-icon-label" id="btn-align-top-card" title="Place item at top-half ID position">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 3.75h15M4.5 10.5h15M6 7.125h12v.75H6v-.75z" />
+                </svg>
+                <span>ID Top</span>
+              </button>
+              
+              <button class="btn-icon-label" id="btn-align-bottom-card" title="Place item at bottom-half ID position">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 13.5h15M4.5 20.25h15M6 16.875h12v.75H6v-.75z" />
+                </svg>
+                <span>ID Bottom</span>
+              </button>
+            </div>
+          </section>
+
+          <!-- Selected Item Properties inspector -->
+          <section class="inspector-section" id="inspector-card-section" style="display: none;" aria-labelledby="inspector-card-title">
+            <h3 class="section-title" id="inspector-card-title">Selected Card Properties</h3>
+            
+            <!-- Real-world scale inputs -->
+            <div class="inspector-row">
+              <label for="card-prop-width">Width (mm):</label>
+              <div class="inspector-input-group">
+                <input type="number" step="0.5" class="text-input num-input-small" id="card-prop-width" value="85.6">
+                <span>mm</span>
+              </div>
+            </div>
+            
+            <div class="inspector-row">
+              <label for="card-prop-height">Height (mm):</label>
+              <div class="inspector-input-group">
+                <input type="number" step="0.5" class="text-input num-input-small" id="card-prop-height" value="54">
+                <span>mm</span>
+                <button class="aspect-lock-indicator locked" id="btn-aspect-lock" title="Lock aspect ratio">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clip-rule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Position inputs -->
+            <div class="inspector-row">
+              <label for="card-prop-x">X Pos (mm):</label>
+              <div class="inspector-input-group">
+                <input type="number" step="1" class="text-input num-input-small" id="card-prop-x" value="20">
+                <span>mm</span>
+              </div>
+            </div>
+            <div class="inspector-row">
+              <label for="card-prop-y">Y Pos (mm):</label>
+              <div class="inspector-input-group">
+                <input type="number" step="1" class="text-input num-input-small" id="card-prop-y" value="20">
+                <span>mm</span>
+              </div>
+            </div>
+
+            <!-- Rotation option -->
+            <div class="inspector-row">
+              <label>Rotate Item:</label>
+              <div class="rotate-controls">
+                <button class="btn-secondary btn-mini" id="btn-card-rotate-ccw">↺ -90°</button>
+                <button class="btn-secondary btn-mini" id="btn-card-rotate-cw">90° ↻</button>
+              </div>
+            </div>
+
+            <!-- Visual filter mode settings -->
+            <div>
+              <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 8px;">Filter Mode:</label>
+              <div class="filter-grid">
+                <button class="filter-btn active" data-filter="color" id="filter-btn-color">Color</button>
+                <button class="filter-btn" data-filter="grayscale" id="filter-btn-grayscale">Grayscale</button>
+                <button class="filter-btn" data-filter="photocopy" id="filter-btn-photocopy">Photocopy</button>
+              </div>
+              
+              <!-- Photocopy threshold adjustment -->
+              <div class="photocopy-threshold-container" id="threshold-container">
+                <div class="inspector-row">
+                  <label for="photocopy-threshold-slider">B&W Threshold:</label>
+                  <span id="threshold-val" style="font-size: 0.75rem; color: var(--accent-indigo); font-weight: 600;">128</span>
+                </div>
+                <input type="range" class="range-slider" id="photocopy-threshold-slider" min="50" max="220" value="128">
+              </div>
+
+              <!-- Brightness & Contrast Adjustments -->
+              <div class="effects-sliders-container" id="effects-container">
+                <div class="inspector-row" style="margin-bottom: 0;">
+                  <label for="card-prop-brightness">Brightness:</label>
+                  <span id="brightness-val" style="font-size: 0.75rem; color: var(--accent-indigo); font-weight: 600;">100%</span>
+                </div>
+                <input type="range" class="range-slider" id="card-prop-brightness" min="50" max="150" value="100">
+
+                <div class="inspector-row" style="margin-bottom: 0; margin-top: 4px;">
+                  <label for="card-prop-contrast">Contrast:</label>
+                  <span id="contrast-val" style="font-size: 0.75rem; color: var(--accent-indigo); font-weight: 600;">100%</span>
+                </div>
+                <input type="range" class="range-slider" id="card-prop-contrast" min="50" max="150" value="100">
+
+                <div class="inspector-row" style="margin-bottom: 0; margin-top: 4px;">
+                  <label for="card-prop-corner-radius">Corner Rounding:</label>
+                  <span id="corner-radius-val" style="font-size: 0.75rem; color: var(--accent-indigo); font-weight: 600;">0mm</span>
+                </div>
+                <input type="range" class="range-slider" id="card-prop-corner-radius" min="0" max="10" step="0.5" value="0">
+              </div>
+            </div>
+
+            <!-- Order / Layering operations -->
+            <div class="inspector-row">
+              <label id="order-arrange-label">Arrange Layer / Grid:</label>
+              <div style="display: flex; gap: 6px;">
+                <button class="btn-secondary btn-mini" id="btn-layer-backward" title="Send card backward (Under / Left in grid)">◁ Move Back</button>
+                <button class="btn-secondary btn-mini" id="btn-layer-forward" title="Bring card forward (Over / Right in grid)">Move Fwd ▷</button>
+              </div>
+            </div>
+
+            <button class="btn-secondary" id="btn-delete-placed-card" style="width: 100%; border-color: rgba(239, 68, 68, 0.3); color: #f87171; background: rgba(239, 68, 68, 0.05); margin-top: 10px;">
+              Delete Card from Page
+            </button>
+          </section>
+
+          <!-- If no card is selected -->
+          <div id="inspector-card-empty" style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 0.8rem; border: 1px dashed var(--border-light); border-radius: 8px;">
+            Select an image on the A4 page to edit its size, rotation, or filters.
+          </div>
+
+          <!-- Document Export section -->
+          <section class="inspector-section" style="margin-top: auto;" aria-labelledby="inspector-export-title">
+            <h3 class="section-title" id="inspector-export-title">3. Export Document</h3>
+            <div class="inspector-row" style="flex-direction: column; align-items: stretch; gap: 6px;">
+              <label for="pdf-filename">Export Filename (no extension):</label>
+              <input type="text" class="text-input" id="pdf-filename" value="ID_Cards_Compile" style="width: 100%;">
+            </div>
+            <button class="btn-primary" id="btn-download-pdf" style="width: 100%; margin-top: 10px; background: linear-gradient(135deg, var(--accent-violet), var(--accent-indigo));">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" style="width: 16px; height: 16px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Generate & Download PDF
+            </button>
+            <button class="btn-secondary" id="btn-download-jpeg" style="width: 100%; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 16px; height: 16px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z" />
+              </svg>
+              Export Pages as JPEGs
+            </button>
+          </section>
+
+        </aside>
+
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- Feedback Toast Alerts -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Custom Custom Ratio Prompt Modal Dialog -->
+  <div class="modal-overlay" id="custom-ratio-modal">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 style="font-size: 1.1rem;">Custom Crop Aspect Ratio</h3>
+        <button class="btn-remove" id="btn-close-modal" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">
+          Specify the custom width and height ratio. For example, a card of 85.6mm by 54mm can be specified directly as 85.6 and 54.
+        </p>
+        <div class="inspector-row">
+          <label for="modal-ratio-w">Width Unit:</label>
+          <input type="number" class="text-input" id="modal-ratio-w" value="85.6" style="width: 120px;">
+        </div>
+        <div class="inspector-row">
+          <label for="modal-ratio-h">Height Unit:</label>
+          <input type="number" class="text-input" id="modal-ratio-h" value="53.98" style="width: 120px;">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btn-cancel-modal">Cancel</button>
+        <button class="btn-primary" id="btn-apply-modal">Apply Ratio</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Javascript Core Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
