@@ -221,7 +221,7 @@ function setupTabs() {
         elements.cropPanel.classList.remove('active');
         elements.enhancerPanel.classList.add('active');
         elements.compilerPanel.classList.remove('active');
-        updateSidebarVisibility('compiler');
+        updateSidebarVisibility('enhancer');
         renderEnhancerEditor();
       } else {
         elements.cropPanel.classList.remove('active');
@@ -235,10 +235,10 @@ function setupTabs() {
 }
 
 function updateSidebarVisibility(activeTab) {
-  if (activeTab === 'crop') {
+  if (activeTab === 'crop' || activeTab === 'enhancer') {
     elements.sidebarUploadSection.style.display = 'block';
     elements.sidebarQueueSection.style.display = 'block';
-    elements.sidebarGallerySection.style.display = 'none';
+    elements.sidebarGallerySection.style.display = 'block';
   } else {
     elements.sidebarUploadSection.style.display = 'none';
     elements.sidebarQueueSection.style.display = 'none';
