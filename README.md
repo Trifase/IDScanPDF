@@ -14,6 +14,9 @@ Running entirely in the browser using vanilla JavaScript and HTML5 APIs, it requ
 - No backend servers, no analytics, and no external tracking APIs.
 
 ### 📐 Projective Homography & Crop Warp Editor
+- **Card Boundary Auto-Detection**: Uses a local Sobel edge-detection algorithm and diagonal search lines to automatically find card corners on upload, positioning crop handles around the document boundaries instantly.
+- **Crop Handles State Persistence**: Remembers handle coordinates for each original image in the upload queue individually, allowing you to switch between photos without losing your custom cropping points.
+- **Manual Auto-Detect Button**: Toggle manual re-run of corner detection via a target bracket toolbar button in case you adjust handles and want to reset/re-detect.
 - **Corner Handles Dragging**: Move four corner handles on the image to define precise boundaries.
 - **Corner Magnifier Lens**: Displays a circular sub-pixel magnifier lens (2.5x visual zoom) showing the original uncompressed source photo pixels around the active handle for pixel-perfect adjustments.
 - **Automatic Orientation Inversion**: Auto-detects portrait/landscape orientations of crop regions to swap presets automatically (e.g. ID-1 card landscape `1.58` aspect ratio -> portrait `0.63` aspect ratio).

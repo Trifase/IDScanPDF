@@ -95,11 +95,18 @@
           </svg>
           1. Perspective Crop & Warp
         </button>
+        <button class="tab-btn" id="tab-btn-enhancer" data-target="enhancer-panel">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 21l5.096-.813a2 2 0 001.077-.547l5.83-5.83a2 2 0 00.547-1.077L21 9l-5.096.813a2 2 0 00-1.077.547l-5.83 5.83a2 2 0 00-.547 1.077z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 10.5h.008v.008H9V10.5z" />
+          </svg>
+          2. Edit & Enhance Cards
+        </button>
         <button class="tab-btn" id="tab-btn-compiler" data-target="compiler-panel">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px;">
             <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
           </svg>
-          2. Compile A4 Print Sheet
+          3. Compile A4 Print Sheet
         </button>
       </nav>
 
@@ -142,6 +149,13 @@
           </div>
           
           <div class="toolbar-group">
+            <button class="btn-secondary" id="btn-crop-autodetect" title="Auto-detect card corners in photo">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" style="width: 16px; height: 16px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75h3m-3 0v3m11.25-3h-3m3 0v3m-15 11.25h3m-3 0v-3m15 3h-3m3 0v-3M9 9h6v6H9V9z" />
+              </svg>
+              Auto-Detect
+            </button>
+            
             <button class="btn-secondary" id="btn-crop-rotate-ccw" title="Rotate original photo 90 degrees CCW">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 16px; height: 16px;">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-6 6m0 0l-6-6m6 6V9a6 6 0 0112 0v3" />
@@ -200,7 +214,177 @@
 
       </section>
 
-      <!-- Panel 2: A4 Compiler Canvas Layout -->
+      <!-- Panel 2: Enhancer Workspace (New) -->
+      <section class="tab-content compiler-panel" id="enhancer-panel" aria-labelledby="tab-btn-enhancer">
+        
+        <!-- Workspace Left Side -->
+        <div class="perspective-editor-panel active" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+          
+          <!-- Enhancer Toolbar -->
+          <div class="workspace-toolbar" id="enhancer-toolbar">
+            <div class="toolbar-group">
+              <span class="toolbar-label" style="font-weight: 600; color: var(--accent-indigo);">Selected Card:</span>
+              <span id="enhancer-card-name-label" style="font-size: 0.85rem; color: var(--text-primary); font-weight: 500;">No card selected</span>
+            </div>
+            
+            <div class="toolbar-group">
+              <button class="btn-primary" id="btn-enhancer-place" style="background: linear-gradient(135deg, var(--accent-indigo), var(--accent-violet));">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" style="width: 16px; height: 16px;">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Place on A4 Canvas
+              </button>
+            </div>
+          </div>
+          
+          <!-- Enhancer Viewport -->
+          <div class="editor-viewport" id="enhancer-viewport">
+            
+            <!-- Empty Notice -->
+            <div class="workspace-empty-notice" id="enhancer-empty-notice">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 21l5.096-.813a2 2 0 001.077-.547l5.83-5.83a2 2 0 00.547-1.077L21 9l-5.096.813a2 2 0 00-1.077.547l-5.83 5.83a2 2 0 00-.547 1.077z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 10.5h.008v.008H9V10.5z" />
+              </svg>
+              <h3>Select a cropped card to edit</h3>
+              <p>Choose a warped card from the library sidebar to adjust filters, white balance, or download as a file.</p>
+            </div>
+            
+            <!-- Enhancer Canvas Display Container -->
+            <div class="enhancer-container" id="enhancer-container" style="display: none; position: relative; margin: 0 auto; box-shadow: var(--shadow-lg);">
+              <canvas class="crop-canvas" id="enhancer-canvas"></canvas>
+            </div>
+            
+          </div>
+        </div>
+
+        <!-- Enhancer Control Toolbar / Properties Panel -->
+        <aside class="inspector-panel" id="enhancer-inspector" aria-label="Card Image Enhancements Inspector">
+          
+          <!-- Enhancer header with Undo button -->
+          <div class="inspector-header-row" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 12px; margin-bottom: 4px;">
+            <span style="font-size: 0.85rem; text-transform: uppercase; color: var(--text-primary); letter-spacing: 0.05em; font-weight: 700;">Enhancer Settings</span>
+            <button class="btn-secondary btn-mini" id="btn-enhancer-undo" disabled title="Undo last adjustment (Ctrl+Z)" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px; cursor: pointer;">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" style="width: 13px; height: 13px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+              </svg>
+              <span>Undo</span>
+            </button>
+          </div>
+
+          <!-- Visual filter mode settings -->
+          <section class="inspector-section" aria-labelledby="enhancer-filter-title">
+            <h3 class="section-title" id="enhancer-filter-title">Filter Mode</h3>
+            <div class="filter-grid">
+              <button class="filter-btn active" data-filter="color" id="enhancer-filter-btn-color">Color</button>
+              <button class="filter-btn" data-filter="grayscale" id="enhancer-filter-btn-grayscale">Grayscale</button>
+              <button class="filter-btn" data-filter="photocopy" id="enhancer-filter-btn-photocopy">Photocopy</button>
+            </div>
+            
+            <!-- Photocopy threshold adjustment -->
+            <div class="photocopy-threshold-container" id="enhancer-threshold-container">
+              <div class="inspector-row">
+                <label for="enhancer-photocopy-threshold-slider">B&W Threshold:</label>
+                <div class="control-group-inline" style="display: flex; align-items: center; gap: 6px;">
+                  <input type="number" class="text-input num-input-small enhancer-num-input" id="enhancer-threshold-num" min="50" max="220" value="128" style="padding: 2px 6px; width: 60px; height: 26px; font-size: 0.8rem; font-weight: 600;">
+                  <button class="btn-reset" id="btn-enhancer-threshold-reset" title="Reset Threshold">↺</button>
+                </div>
+              </div>
+              <input type="range" class="range-slider" id="enhancer-photocopy-threshold-slider" min="50" max="220" value="128">
+            </div>
+          </section>
+
+          <!-- Brightness, Contrast & White Balance Adjustments -->
+          <section class="inspector-section" aria-labelledby="enhancer-effects-title">
+            <h3 class="section-title" id="enhancer-effects-title">Image Adjustments</h3>
+            <div class="effects-sliders-container" style="margin-top: 0;">
+              <div class="inspector-row" style="margin-bottom: 0;">
+                <label for="enhancer-brightness">Brightness:</label>
+                <div class="control-group-inline" style="display: flex; align-items: center; gap: 6px;">
+                  <input type="number" class="text-input num-input-small enhancer-num-input" id="enhancer-brightness-num" min="50" max="150" value="100" style="padding: 2px 6px; width: 60px; height: 26px; font-size: 0.8rem; font-weight: 600;">
+                  <button class="btn-reset" id="btn-enhancer-brightness-reset" title="Reset Brightness">↺</button>
+                </div>
+              </div>
+              <input type="range" class="range-slider" id="enhancer-brightness" min="50" max="150" value="100">
+
+              <div class="inspector-row" style="margin-bottom: 0; margin-top: 4px;">
+                <label for="enhancer-contrast">Contrast:</label>
+                <div class="control-group-inline" style="display: flex; align-items: center; gap: 6px;">
+                  <input type="number" class="text-input num-input-small enhancer-num-input" id="enhancer-contrast-num" min="50" max="150" value="100" style="padding: 2px 6px; width: 60px; height: 26px; font-size: 0.8rem; font-weight: 600;">
+                  <button class="btn-reset" id="btn-enhancer-contrast-reset" title="Reset Contrast">↺</button>
+                </div>
+              </div>
+              <input type="range" class="range-slider" id="enhancer-contrast" min="50" max="150" value="100">
+
+              <!-- White Balance Eyedropper Sampler -->
+              <div class="inspector-row" style="margin-bottom: 6px; margin-top: 6px; border-top: 1px solid var(--border-light); padding-top: 8px;">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" style="width: 13px; height: 13px; color: var(--accent-indigo);">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 4.5l3.75 3.75M18 6.75L9 15.75H5.25v-3.75L14.25 3A2.121 2.121 0 1118 6.75z" />
+                  </svg>
+                  <span>WB Picker (Neutral):</span>
+                </label>
+                <button class="btn-secondary btn-mini" id="btn-enhancer-wb-picker" title="Click a neutral white/gray pixel in the image to auto-adjust white balance" style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px; cursor: pointer;">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 12px; height: 12px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 4.5l3.75 3.75M18 6.75L9 15.75H5.25v-3.75L14.25 3A2.121 2.121 0 1118 6.75z" />
+                  </svg>
+                  <span>Pick Pixel</span>
+                </button>
+              </div>
+
+              <!-- Temperature Slider -->
+              <div class="inspector-row" style="margin-bottom: 0; margin-top: 4px;">
+                <label for="enhancer-temp">Temperature (Cool - Warm):</label>
+                <div class="control-group-inline" style="display: flex; align-items: center; gap: 6px;">
+                  <input type="number" class="text-input num-input-small enhancer-num-input" id="enhancer-temp-num" min="-50" max="50" value="0" style="padding: 2px 6px; width: 60px; height: 26px; font-size: 0.8rem; font-weight: 600;">
+                  <button class="btn-reset" id="btn-enhancer-temp-reset" title="Reset Temperature">↺</button>
+                </div>
+              </div>
+              <input type="range" class="range-slider" id="enhancer-temp" min="-50" max="50" value="0">
+
+              <!-- Tint Slider -->
+              <div class="inspector-row" style="margin-bottom: 0; margin-top: 4px;">
+                <label for="enhancer-tint">Tint (Magenta - Green):</label>
+                <div class="control-group-inline" style="display: flex; align-items: center; gap: 6px;">
+                  <input type="number" class="text-input num-input-small enhancer-num-input" id="enhancer-tint-num" min="-50" max="50" value="0" style="padding: 2px 6px; width: 60px; height: 26px; font-size: 0.8rem; font-weight: 600;">
+                  <button class="btn-reset" id="btn-enhancer-tint-reset" title="Reset Tint">↺</button>
+                </div>
+              </div>
+              <input type="range" class="range-slider" id="enhancer-tint" min="-50" max="50" value="0">
+
+              <!-- Sharpness Slider -->
+              <div class="inspector-row" style="margin-bottom: 0; margin-top: 8px; border-top: 1px solid var(--border-light); padding-top: 8px;">
+                <label for="enhancer-sharpness">Sharpness (Enhance Text):</label>
+                <div class="control-group-inline" style="display: flex; align-items: center; gap: 6px;">
+                  <input type="number" class="text-input num-input-small enhancer-num-input" id="enhancer-sharpness-num" min="0" max="100" value="0" style="padding: 2px 6px; width: 60px; height: 26px; font-size: 0.8rem; font-weight: 600;">
+                  <button class="btn-reset" id="btn-enhancer-sharpness-reset" title="Reset Sharpness">↺</button>
+                </div>
+              </div>
+              <input type="range" class="range-slider" id="enhancer-sharpness" min="0" max="100" step="5" value="0">
+            </div>
+          </section>
+
+          <!-- Single Card File Export Actions -->
+          <section class="inspector-section" style="margin-top: auto;" aria-labelledby="enhancer-export-title">
+            <h3 class="section-title" id="enhancer-export-title">Export Card File</h3>
+            <button class="btn-primary" id="btn-enhancer-download-jpeg" style="width: 100%; justify-content: center;">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 16px; height: 16px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z" />
+              </svg>
+              Download Card as JPEG
+            </button>
+            <button class="btn-secondary" id="btn-enhancer-download-png" style="width: 100%; justify-content: center; margin-top: 8px;">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 16px; height: 16px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Download Card as PNG
+            </button>
+          </section>
+        </aside>
+        
+      </section>
+
+      <!-- Panel 3: A4 Compiler Canvas Layout -->
       <section class="tab-content compiler-panel" id="compiler-panel" aria-labelledby="tab-btn-compiler">
         
         <!-- Interactive compiler area -->
@@ -331,44 +515,13 @@
               </div>
             </div>
 
-            <!-- Visual filter mode settings -->
-            <div>
-              <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 8px;">Filter Mode:</label>
-              <div class="filter-grid">
-                <button class="filter-btn active" data-filter="color" id="filter-btn-color">Color</button>
-                <button class="filter-btn" data-filter="grayscale" id="filter-btn-grayscale">Grayscale</button>
-                <button class="filter-btn" data-filter="photocopy" id="filter-btn-photocopy">Photocopy</button>
+            <!-- Corner Rounding Adjustments -->
+            <div class="effects-sliders-container" id="effects-container">
+              <div class="inspector-row" style="margin-bottom: 0;">
+                <label for="card-prop-corner-radius">Corner Rounding:</label>
+                <span id="corner-radius-val" style="font-size: 0.75rem; color: var(--accent-indigo); font-weight: 600;">0mm</span>
               </div>
-              
-              <!-- Photocopy threshold adjustment -->
-              <div class="photocopy-threshold-container" id="threshold-container">
-                <div class="inspector-row">
-                  <label for="photocopy-threshold-slider">B&W Threshold:</label>
-                  <span id="threshold-val" style="font-size: 0.75rem; color: var(--accent-indigo); font-weight: 600;">128</span>
-                </div>
-                <input type="range" class="range-slider" id="photocopy-threshold-slider" min="50" max="220" value="128">
-              </div>
-
-              <!-- Brightness & Contrast Adjustments -->
-              <div class="effects-sliders-container" id="effects-container">
-                <div class="inspector-row" style="margin-bottom: 0;">
-                  <label for="card-prop-brightness">Brightness:</label>
-                  <span id="brightness-val" style="font-size: 0.75rem; color: var(--accent-indigo); font-weight: 600;">100%</span>
-                </div>
-                <input type="range" class="range-slider" id="card-prop-brightness" min="50" max="150" value="100">
-
-                <div class="inspector-row" style="margin-bottom: 0; margin-top: 4px;">
-                  <label for="card-prop-contrast">Contrast:</label>
-                  <span id="contrast-val" style="font-size: 0.75rem; color: var(--accent-indigo); font-weight: 600;">100%</span>
-                </div>
-                <input type="range" class="range-slider" id="card-prop-contrast" min="50" max="150" value="100">
-
-                <div class="inspector-row" style="margin-bottom: 0; margin-top: 4px;">
-                  <label for="card-prop-corner-radius">Corner Rounding:</label>
-                  <span id="corner-radius-val" style="font-size: 0.75rem; color: var(--accent-indigo); font-weight: 600;">0mm</span>
-                </div>
-                <input type="range" class="range-slider" id="card-prop-corner-radius" min="0" max="10" step="0.5" value="0">
-              </div>
+              <input type="range" class="range-slider" id="card-prop-corner-radius" min="0" max="10" step="0.5" value="0">
             </div>
 
             <!-- Order / Layering operations -->

@@ -8,10 +8,11 @@ const state = {
   originals: [],         // { id, name, size, img }
   activeOriginalId: null, // Selected original image ID for cropping
   
-  processedCards: [],    // { id, dataUrl, widthRatio, heightRatio, w_px, h_px }
+  processedCards: [],    // { id, dataUrl, widthRatio, heightRatio, w_px, h_px, filter, threshold, brightness, contrast, temperature, tint }
+  activeProcessedCardId: null, // Selected processed card ID for enhancing
   imageCache: {},        // cardId -> HTMLImageElement (for quick filter rendering)
   
-  placedCards: [],       // { id, cardId, pageIndex, x, y, w, h, rotation, filter, threshold }
+  placedCards: [],       // { id, cardId, pageIndex, x, y, w, h, rotation, cornerRadius }
   activePlacedCardId: null,
   
   pagesCount: 1,         // Count of A4 sheets in workspace
@@ -23,7 +24,10 @@ const state = {
   cropFitHeight: 0,
   
   // Grid layout status tracker
-  isGridAutoActive: false
+  isGridAutoActive: false,
+  
+  // White balance eyedropper mode tracker
+  wbPickerActive: false
 };
 
 // Handle Corners for Cropping (Normalized 0..1 coordinates)
@@ -34,6 +38,9 @@ let cropHandles = [
   { x: 0.1, y: 0.9 }  // BL
 ];
 
+// Visual Enhancer Undo History Stack
+const enhancerHistory = [];
+
 // Document Constants
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
@@ -42,8 +49,10 @@ const A4_HEIGHT_MM = 297;
 const elements = {
   // Navigation Tabs
   tabBtnCrop: document.getElementById('tab-btn-crop'),
+  tabBtnEnhancer: document.getElementById('tab-btn-enhancer'),
   tabBtnCompiler: document.getElementById('tab-btn-compiler'),
   cropPanel: document.getElementById('crop-panel'),
+  enhancerPanel: document.getElementById('enhancer-panel'),
   compilerPanel: document.getElementById('compiler-panel'),
   
   // Upload
@@ -73,6 +82,38 @@ const elements = {
   btnCropZoomIn: document.getElementById('btn-crop-zoom-in'),
   btnCropZoomOut: document.getElementById('btn-crop-zoom-out'),
   cropRoundCorners: document.getElementById('crop-round-corners'),
+  btnCropAutodetect: document.getElementById('btn-crop-autodetect'),
+  
+  // Enhancer Panel Elements
+  enhancerCardNameLabel: document.getElementById('enhancer-card-name-label'),
+  btnEnhancerPlace: document.getElementById('btn-enhancer-place'),
+  enhancerViewport: document.getElementById('enhancer-viewport'),
+  enhancerEmptyNotice: document.getElementById('enhancer-empty-notice'),
+  enhancerContainer: document.getElementById('enhancer-container'),
+  enhancerCanvas: document.getElementById('enhancer-canvas'),
+  enhancerInspector: document.getElementById('enhancer-inspector'),
+  
+  enhancerFilterBtnColor: document.getElementById('enhancer-filter-btn-color'),
+  enhancerFilterBtnGrayscale: document.getElementById('enhancer-filter-btn-grayscale'),
+  enhancerFilterBtnPhotocopy: document.getElementById('enhancer-filter-btn-photocopy'),
+  enhancerThresholdContainer: document.getElementById('enhancer-threshold-container'),
+  enhancerThresholdNum: document.getElementById('enhancer-threshold-num'),
+  enhancerPhotocopySlider: document.getElementById('enhancer-photocopy-threshold-slider'),
+  
+  enhancerBrightness: document.getElementById('enhancer-brightness'),
+  enhancerBrightnessNum: document.getElementById('enhancer-brightness-num'),
+  enhancerContrast: document.getElementById('enhancer-contrast'),
+  enhancerContrastNum: document.getElementById('enhancer-contrast-num'),
+  enhancerTemp: document.getElementById('enhancer-temp'),
+  enhancerTempNum: document.getElementById('enhancer-temp-num'),
+  enhancerTint: document.getElementById('enhancer-tint'),
+  enhancerTintNum: document.getElementById('enhancer-tint-num'),
+  enhancerSharpness: document.getElementById('enhancer-sharpness'),
+  enhancerSharpnessNum: document.getElementById('enhancer-sharpness-num'),
+  btnEnhancerWBPicker: document.getElementById('btn-enhancer-wb-picker'),
+  btnEnhancerUndo: document.getElementById('btn-enhancer-undo'),
+  btnEnhancerDownloadJpeg: document.getElementById('btn-enhancer-download-jpeg'),
+  btnEnhancerDownloadPng: document.getElementById('btn-enhancer-download-png'),
   
   // Magnifier
   magnifierLens: document.getElementById('magnifier-lens'),
@@ -96,16 +137,7 @@ const elements = {
   cardPropY: document.getElementById('card-prop-y'),
   btnCardRotateCCW: document.getElementById('btn-card-rotate-ccw'),
   btnCardRotateCW: document.getElementById('btn-card-rotate-cw'),
-  filterBtnColor: document.getElementById('filter-btn-color'),
-  filterBtnGrayscale: document.getElementById('filter-btn-grayscale'),
-  filterBtnPhotocopy: document.getElementById('filter-btn-photocopy'),
-  thresholdContainer: document.getElementById('threshold-container'),
-  thresholdVal: document.getElementById('threshold-val'),
-  photocopySlider: document.getElementById('photocopy-threshold-slider'),
-  cardPropBrightness: document.getElementById('card-prop-brightness'),
-  brightnessVal: document.getElementById('brightness-val'),
-  cardPropContrast: document.getElementById('card-prop-contrast'),
-  contrastVal: document.getElementById('contrast-val'),
+  
   cardPropCornerRadius: document.getElementById('card-prop-corner-radius'),
   cornerRadiusVal: document.getElementById('corner-radius-val'),
   btnLayerForward: document.getElementById('btn-layer-forward'),
@@ -165,20 +197,35 @@ function showToast(message, type = 'info') {
    Navigation Tabs
    ========================================================================== */
 function setupTabs() {
-  const tabs = [elements.tabBtnCrop, elements.tabBtnCompiler];
+  const tabs = [elements.tabBtnCrop, elements.tabBtnEnhancer, elements.tabBtnCompiler];
   tabs.forEach(tab => {
+    if (!tab) return;
     tab.addEventListener('click', () => {
-      tabs.forEach(t => t.classList.remove('active'));
+      tabs.forEach(t => {
+        if (t) t.classList.remove('active');
+      });
       tab.classList.add('active');
       
       const targetId = tab.getAttribute('data-target');
+      if (targetId !== 'enhancer-panel') {
+        setWBPickerActive(false);
+      }
+      
       if (targetId === 'crop-panel') {
         elements.cropPanel.classList.add('active');
+        elements.enhancerPanel.classList.remove('active');
         elements.compilerPanel.classList.remove('active');
         updateSidebarVisibility('crop');
         renderCropEditor();
+      } else if (targetId === 'enhancer-panel') {
+        elements.cropPanel.classList.remove('active');
+        elements.enhancerPanel.classList.add('active');
+        elements.compilerPanel.classList.remove('active');
+        updateSidebarVisibility('compiler');
+        renderEnhancerEditor();
       } else {
         elements.cropPanel.classList.remove('active');
+        elements.enhancerPanel.classList.remove('active');
         elements.compilerPanel.classList.add('active');
         updateSidebarVisibility('compiler');
         renderWorkspace();
@@ -248,7 +295,9 @@ function handleFiles(files) {
         const name = file.name;
         const size = (file.size / 1024).toFixed(1) + ' KB';
         
-        state.originals.push({ id, name, size, img });
+        // Auto-detect crop handles immediately on load
+        const detectedHandles = detectCardCorners(img);
+        state.originals.push({ id, name, size, img, handles: detectedHandles });
         
         // Select the newly uploaded file as active
         state.activeOriginalId = id;
@@ -259,6 +308,7 @@ function handleFiles(files) {
         }
         
         updateQueueList();
+        resetHandles(state.originals.find(orig => orig.id === id));
         renderCropEditor();
       };
       img.src = event.target.result;
@@ -297,7 +347,7 @@ function updateQueueList() {
       if (e.target.classList.contains('btn-delete-original')) return;
       state.activeOriginalId = item.id;
       updateQueueList();
-      resetHandles();
+      resetHandles(item);
       renderCropEditor();
     });
     
@@ -309,7 +359,8 @@ function updateQueueList() {
         state.activeOriginalId = state.originals.length > 0 ? state.originals[state.originals.length - 1].id : null;
       }
       updateQueueList();
-      resetHandles();
+      const activeOrig = state.originals.find(orig => orig.id === state.activeOriginalId);
+      resetHandles(activeOrig);
       renderCropEditor();
       showToast('Image removed from upload queue', 'info');
     });
@@ -321,13 +372,17 @@ function updateQueueList() {
 /* ==========================================================================
    Perspective Crop & Warping Editor
    ========================================================================== */
-function resetHandles() {
-  cropHandles = [
-    { x: 0.1, y: 0.1 },
-    { x: 0.9, y: 0.1 },
-    { x: 0.9, y: 0.9 },
-    { x: 0.1, y: 0.9 }
-  ];
+function resetHandles(originalItem = null) {
+  if (originalItem && originalItem.handles) {
+    cropHandles = JSON.parse(JSON.stringify(originalItem.handles));
+  } else {
+    cropHandles = [
+      { x: 0.1, y: 0.1 },
+      { x: 0.9, y: 0.1 },
+      { x: 0.9, y: 0.9 },
+      { x: 0.1, y: 0.9 }
+    ];
+  }
 }
 
 function renderCropEditor() {
@@ -569,6 +624,11 @@ function setupHandlesDrag() {
         window.removeEventListener('mouseup', onEnd);
         window.removeEventListener('touchmove', onMove);
         window.removeEventListener('touchend', onEnd);
+        
+        const activeOrig = state.originals.find(item => item.id === state.activeOriginalId);
+        if (activeOrig) {
+          activeOrig.handles = JSON.parse(JSON.stringify(cropHandles));
+        }
       };
       
       window.addEventListener('mousemove', onMove);
@@ -631,11 +691,31 @@ function setupCropControls() {
     const newImg = new Image();
     newImg.onload = () => {
       activeOrig.img = newImg;
-      resetHandles();
+      // Re-run card detection on rotated photo
+      activeOrig.handles = detectCardCorners(newImg);
+      resetHandles(activeOrig);
       renderCropEditor();
       showToast('Image rotated clockwise', 'success');
     };
     newImg.src = rotatedCanvas.toDataURL('image/jpeg', 0.95);
+  });
+
+  // Auto-Detect Card Corners click handler
+  elements.btnCropAutodetect.addEventListener('click', () => {
+    const activeOrig = state.originals.find(item => item.id === state.activeOriginalId);
+    if (!activeOrig) {
+      showToast('Please upload an image first', 'error');
+      return;
+    }
+    
+    showToast('Detecting card boundaries...', 'info');
+    setTimeout(() => {
+      const detected = detectCardCorners(activeOrig.img);
+      activeOrig.handles = detected;
+      resetHandles(activeOrig);
+      renderCropEditor();
+      showToast('Card corners successfully auto-detected!', 'success');
+    }, 100);
   });
   
   // Crop action
@@ -702,14 +782,22 @@ function setupCropControls() {
             widthRatio: ratio >= 1 ? ratio : 1,
             heightRatio: ratio >= 1 ? 1 : 1 / ratio,
             aspectRatio: ratio,
-            name: activeOrig.name
+            name: activeOrig.name,
+            filter: 'color',
+            threshold: 128,
+            brightness: 100,
+            contrast: 100,
+            temperature: 0,
+            tint: 0,
+            sharpness: 0
           });
           
+          state.activeProcessedCardId = cardId;
           updateProcessedGallery();
           showToast('Card successfully warped and saved to gallery!', 'success');
           
-          // Switch to layout tab
-          elements.tabBtnCompiler.click();
+          // Switch to Enhancer tab
+          elements.tabBtnEnhancer.click();
         };
         cardImg.src = croppedDataUrl;
         
@@ -934,12 +1022,33 @@ function updateProcessedGallery() {
   
   state.processedCards.forEach(card => {
     const itemEl = document.createElement('div');
-    itemEl.className = 'gallery-item';
+    const activeClass = card.id === state.activeProcessedCardId ? 'active' : '';
+    itemEl.className = `gallery-item ${activeClass}`;
     itemEl.style.setProperty('aspect-ratio', `${card.aspectRatio} / 1`); // Dynamically match thumbnail container aspect ratio to warped card ratio
     itemEl.setAttribute('draggable', 'true');
     itemEl.setAttribute('data-id', card.id);
+    
+    // Get thumbnail display source with filters applied
+    const cachedImg = state.imageCache[card.id];
+    let displaySrc = card.dataUrl;
+    if (cachedImg) {
+      displaySrc = getFilteredImage(
+        cachedImg,
+        card.filter || 'color',
+        card.threshold !== undefined ? card.threshold : 128,
+        0, // no rotation
+        card.brightness !== undefined ? card.brightness : 100,
+        card.contrast !== undefined ? card.contrast : 100,
+        0, // no corner rounding
+        cachedImg.width,
+        card.temperature || 0,
+        card.tint || 0,
+        card.sharpness || 0
+      );
+    }
+    
     itemEl.innerHTML = `
-      <img src="${card.dataUrl}" alt="Cropped Card" id="gallery-card-img-${card.id}">
+      <img src="${displaySrc}" alt="Cropped Card" id="gallery-card-img-${card.id}">
       <div class="gallery-item-actions">
         <button class="gallery-action-btn btn-add-to-page" data-id="${card.id}" title="Place on current A4 Page">+</button>
         <button class="gallery-action-btn btn-download-card" data-id="${card.id}" title="Download cropped card as JPEG">
@@ -955,6 +1064,20 @@ function updateProcessedGallery() {
     itemEl.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/plain', card.id);
       e.dataTransfer.effectAllowed = 'copy';
+    });
+    
+    // Select by click
+    itemEl.addEventListener('click', (e) => {
+      if (e.target.closest('.gallery-item-actions')) return;
+      state.activeProcessedCardId = card.id;
+      updateProcessedGallery();
+      
+      // If tabBtnEnhancer is present, switch tab, else render enhancer editor directly
+      if (elements.tabBtnEnhancer) {
+        elements.tabBtnEnhancer.click();
+      } else {
+        renderEnhancerEditor();
+      }
     });
     
     // Add by click
@@ -981,9 +1104,13 @@ function updateProcessedGallery() {
       if (state.activePlacedCardId && !state.placedCards.some(c => c.id === state.activePlacedCardId)) {
         state.activePlacedCardId = null;
       }
+      if (state.activeProcessedCardId === card.id) {
+        state.activeProcessedCardId = state.processedCards.length > 0 ? state.processedCards[state.processedCards.length - 1].id : null;
+      }
       
       updateProcessedGallery();
       renderWorkspace();
+      renderEnhancerEditor();
       showToast('Card deleted from library', 'info');
     });
     
@@ -998,28 +1125,51 @@ function downloadDataUrl(dataUrl, filename) {
   link.click();
 }
 
-function downloadCardAsJpeg(cardId) {
+function downloadCardEnhanced(cardId, format = 'jpeg') {
   const card = state.processedCards.find(c => c.id === cardId);
   if (!card) return;
   
-  const img = new Image();
-  img.onload = () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const ctx = canvas.getContext('2d');
-    
-    // Fill white background for JPEG rendering
+  const cachedImg = state.imageCache[cardId];
+  if (!cachedImg) return;
+  
+  const canvas = document.createElement('canvas');
+  canvas.width = cachedImg.width;
+  canvas.height = cachedImg.height;
+  const ctx = canvas.getContext('2d');
+  
+  if (format === 'jpeg') {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw cropped card onto canvas
+  }
+  
+  const filteredUrl = getFilteredImage(
+    cachedImg,
+    card.filter || 'color',
+    card.threshold !== undefined ? card.threshold : 128,
+    0, // no rotation
+    card.brightness !== undefined ? card.brightness : 100,
+    card.contrast !== undefined ? card.contrast : 100,
+    0, // no corner rounding
+    cachedImg.width,
+    card.temperature || 0,
+    card.tint || 0,
+    card.sharpness || 0
+  );
+  
+  const img = new Image();
+  img.onload = () => {
     ctx.drawImage(img, 0, 0);
     
-    // Convert canvas to high-res JPEG
-    const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+    let dataUrl;
+    let extension;
+    if (format === 'png') {
+      dataUrl = canvas.toDataURL('image/png');
+      extension = 'png';
+    } else {
+      dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      extension = 'jpg';
+    }
     
-    // Strip original name extension to name download
     let baseName = 'cropped_card';
     if (card.name) {
       baseName = card.name;
@@ -1029,13 +1179,14 @@ function downloadCardAsJpeg(cardId) {
       }
     }
     
-    downloadDataUrl(jpegDataUrl, `${baseName}_cropped.jpg`);
-    showToast('Cropped card downloaded as JPEG!', 'success');
+    downloadDataUrl(dataUrl, `${baseName}_enhanced.${extension}`);
+    showToast(`Card downloaded as ${format.toUpperCase()}!`, 'success');
   };
-  img.onerror = () => {
-    showToast('Error generating JPEG download!', 'error');
-  };
-  img.src = card.dataUrl;
+  img.src = filteredUrl;
+}
+
+function downloadCardAsJpeg(cardId) {
+  downloadCardEnhanced(cardId, 'jpeg');
 }
 
 /* ==========================================================================
@@ -1235,13 +1386,16 @@ function renderCardsOnPage(pageIndex, pageEl) {
     const imageCached = state.imageCache[placed.cardId];
     const displaySrc = getFilteredImage(
       imageCached,
-      placed.filter,
-      placed.threshold,
+      cardObj.filter || 'color',
+      cardObj.threshold !== undefined ? cardObj.threshold : 128,
       placed.rotation,
-      placed.brightness,
-      placed.contrast,
+      cardObj.brightness !== undefined ? cardObj.brightness : 100,
+      cardObj.contrast !== undefined ? cardObj.contrast : 100,
       placed.cornerRadius,
-      placed.w
+      placed.w,
+      cardObj.temperature || 0,
+      cardObj.tint || 0,
+      cardObj.sharpness || 0
     );
     
     cardEl.innerHTML = `
@@ -1294,7 +1448,81 @@ function renderCardsOnPage(pageIndex, pageEl) {
   });
 }
 
-function getFilteredImage(imgElement, filterType, threshold, rotation = 0, brightness = 100, contrast = 100, cornerRadiusMm = 0, placedWidthMm = 85.6) {
+function applyFiltersToPixelArray(data, width, height, filterType, threshold, brightness, contrast, temperature, tint, sharpness = 0) {
+  width = Math.round(width);
+  height = Math.round(height);
+  
+  // 1. First, apply sharpness if set
+  if (sharpness !== 0) {
+    const src = new Uint8ClampedArray(data);
+    const s = sharpness / 100; // scale 0..1 range
+    const w4 = width * 4;
+    
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = (y * width + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const idx = i + c;
+          const val = src[idx] * (1 + 4 * s)
+                    - s * (src[idx - 4] + src[idx + 4] + src[idx - w4] + src[idx + w4]);
+          data[idx] = Math.max(0, Math.min(255, val));
+        }
+      }
+    }
+  }
+
+  // 2. Now apply brightness, contrast, white balance offsets
+  const bOffset = (brightness - 100) * 1.5; // range: -75 to +75
+  const cVal = (contrast - 100) * 1.2;     // range: -60 to +60
+  const cFactor = (259 * (cVal + 255)) / (255 * (259 - cVal));
+  
+  // Temperature shifts Red (+) and Blue (-) channels
+  const rTemp = temperature * 0.6;
+  const bTemp = -temperature * 0.6;
+  
+  // Tint shifts Green channel (+) relative to Red/Blue (-)
+  const gTint = tint * 0.6;
+  const rTint = -tint * 0.3;
+  const bTint = -tint * 0.3;
+  
+  for (let i = 0; i < data.length; i += 4) {
+    let r = data[i];
+    let g = data[i + 1];
+    let b = data[i + 2];
+    
+    // Apply White Balance & Brightness offsets
+    let r_adj = r + bOffset + rTemp + rTint;
+    let g_adj = g + bOffset + gTint;
+    let b_adj = b + bOffset + bTemp + bTint;
+    
+    // Apply Contrast
+    let r_contrast = cFactor * (r_adj - 128) + 128;
+    let g_contrast = cFactor * (g_adj - 128) + 128;
+    let b_contrast = cFactor * (b_adj - 128) + 128;
+    
+    // Clamp values
+    r = Math.max(0, Math.min(255, r_contrast));
+    g = Math.max(0, Math.min(255, g_contrast));
+    b = Math.max(0, Math.min(255, b_contrast));
+    
+    // Apply Grayscale or Photocopy filters if needed
+    if (filterType === 'grayscale') {
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      data[i] = data[i+1] = data[i+2] = gray;
+    } else if (filterType === 'photocopy') {
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      const val = gray >= threshold ? 255 : 0;
+      data[i] = data[i+1] = data[i+2] = val;
+    } else {
+      // Color mode - just save adjusted RGB values
+      data[i] = r;
+      data[i+1] = g;
+      data[i+2] = b;
+    }
+  }
+}
+
+function getFilteredImage(imgElement, filterType, threshold, rotation = 0, brightness = 100, contrast = 100, cornerRadiusMm = 0, placedWidthMm = 85.6, temperature = 0, tint = 0, sharpness = 0) {
   if (!imgElement) return '';
   
   const canvas = document.createElement('canvas');
@@ -1315,44 +1543,7 @@ function getFilteredImage(imgElement, filterType, threshold, rotation = 0, brigh
   ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
   
   const imgData = ctx.getImageData(0, 0, w, h);
-  const data = imgData.data;
-  
-  // Calculate brightness and contrast factors once
-  const bOffset = (brightness - 100) * 1.5; // range: -75 to +75
-  const cVal = (contrast - 100) * 1.2;     // range: -60 to +60
-  const cFactor = (259 * (cVal + 255)) / (255 * (259 - cVal));
-  
-  for (let i = 0; i < data.length; i += 4) {
-    let r = data[i];
-    let g = data[i + 1];
-    let b = data[i + 2];
-    
-    // 1. Apply Brightness & Contrast
-    let r_adjusted = cFactor * (r + bOffset - 128) + 128;
-    let g_adjusted = cFactor * (g + bOffset - 128) + 128;
-    let b_adjusted = cFactor * (b + bOffset - 128) + 128;
-    
-    // Clamp values
-    r = Math.max(0, Math.min(255, r_adjusted));
-    g = Math.max(0, Math.min(255, g_adjusted));
-    b = Math.max(0, Math.min(255, b_adjusted));
-    
-    // 2. Apply Grayscale or Photocopy filters if needed
-    if (filterType === 'grayscale') {
-      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-      data[i] = data[i+1] = data[i+2] = gray;
-    } else if (filterType === 'photocopy') {
-      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-      const val = gray > threshold ? 255 : 0;
-      data[i] = data[i+1] = data[i+2] = val;
-    } else {
-      // Color mode - just save adjusted RGB values
-      data[i] = r;
-      data[i+1] = g;
-      data[i+2] = b;
-    }
-  }
-  
+  applyFiltersToPixelArray(imgData.data, w, h, filterType, threshold, brightness, contrast, temperature, tint, sharpness);
   ctx.putImageData(imgData, 0, 0);
   
   if (cornerRadiusMm > 0) {
@@ -1554,33 +1745,6 @@ function updateInspectorPanel() {
     elements.btnAspectLock.classList.remove('locked');
   }
   
-  // Active Filter modes buttons
-  const filters = ['color', 'grayscale', 'photocopy'];
-  filters.forEach(f => {
-    const btn = document.getElementById(`filter-btn-${f}`);
-    if (btn) {
-      if (activePlaced.filter === f) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
-    }
-  });
-  
-  // Photocopy slider visibility
-  if (activePlaced.filter === 'photocopy') {
-    elements.thresholdContainer.classList.add('active');
-    elements.photocopySlider.value = activePlaced.threshold;
-    elements.thresholdVal.textContent = activePlaced.threshold;
-  } else {
-    elements.thresholdContainer.classList.remove('active');
-  }
-  
-  // Set Brightness & Contrast slider values
-  elements.cardPropBrightness.value = activePlaced.brightness || 100;
-  elements.brightnessVal.textContent = (activePlaced.brightness || 100) + '%';
-  elements.cardPropContrast.value = activePlaced.contrast || 100;
-  elements.contrastVal.textContent = (activePlaced.contrast || 100) + '%';
   elements.cardPropCornerRadius.value = activePlaced.cornerRadius || 0;
   elements.cornerRadiusVal.textContent = (activePlaced.cornerRadius || 0) + 'mm';
 }
@@ -1680,111 +1844,6 @@ function setupInspectorControls() {
     renderWorkspace();
   });
   
-  // Filters Click Events
-  const filters = ['color', 'grayscale', 'photocopy'];
-  filters.forEach(f => {
-    const btn = document.getElementById(`filter-btn-${f}`);
-    if (btn) {
-      btn.addEventListener('click', () => {
-        const activePlaced = state.placedCards.find(c => c.id === state.activePlacedCardId);
-        if (!activePlaced) return;
-        
-        activePlaced.filter = f;
-        renderWorkspace();
-      });
-    }
-  });
-  
-  // Photocopy threshold slider
-  elements.photocopySlider.addEventListener('input', (e) => {
-    const activePlaced = state.placedCards.find(c => c.id === state.activePlacedCardId);
-    if (!activePlaced) return;
-    
-    const val = parseInt(e.target.value);
-    activePlaced.threshold = val;
-    elements.thresholdVal.textContent = val;
-    
-    // Trigger live render update of A4 card image
-    const pageEl = document.getElementById(`a4-page-${activePlaced.pageIndex}`);
-    if (pageEl) {
-      const cardEl = pageEl.querySelector(`.placed-card[data-id="${activePlaced.id}"]`);
-      if (cardEl) {
-        const imageCached = state.imageCache[activePlaced.cardId];
-        const displaySrc = getFilteredImage(
-          imageCached,
-          activePlaced.filter,
-          activePlaced.threshold,
-          activePlaced.rotation,
-          activePlaced.brightness,
-          activePlaced.contrast,
-          activePlaced.cornerRadius,
-          activePlaced.w
-        );
-        cardEl.querySelector('img').src = displaySrc;
-      }
-    }
-  });
-
-  // Brightness slider
-  elements.cardPropBrightness.addEventListener('input', (e) => {
-    const activePlaced = state.placedCards.find(c => c.id === state.activePlacedCardId);
-    if (!activePlaced) return;
-    
-    const val = parseInt(e.target.value);
-    activePlaced.brightness = val;
-    elements.brightnessVal.textContent = val + '%';
-    
-    // Live update card image
-    const pageEl = document.getElementById(`a4-page-${activePlaced.pageIndex}`);
-    if (pageEl) {
-      const cardEl = pageEl.querySelector(`.placed-card[data-id="${activePlaced.id}"]`);
-      if (cardEl) {
-        const imageCached = state.imageCache[activePlaced.cardId];
-        const displaySrc = getFilteredImage(
-          imageCached,
-          activePlaced.filter,
-          activePlaced.threshold,
-          activePlaced.rotation,
-          activePlaced.brightness,
-          activePlaced.contrast,
-          activePlaced.cornerRadius,
-          activePlaced.w
-        );
-        cardEl.querySelector('img').src = displaySrc;
-      }
-    }
-  });
-
-  // Contrast slider
-  elements.cardPropContrast.addEventListener('input', (e) => {
-    const activePlaced = state.placedCards.find(c => c.id === state.activePlacedCardId);
-    if (!activePlaced) return;
-    
-    const val = parseInt(e.target.value);
-    activePlaced.contrast = val;
-    elements.contrastVal.textContent = val + '%';
-    
-    // Live update card image
-    const pageEl = document.getElementById(`a4-page-${activePlaced.pageIndex}`);
-    if (pageEl) {
-      const cardEl = pageEl.querySelector(`.placed-card[data-id="${activePlaced.id}"]`);
-      if (cardEl) {
-        const imageCached = state.imageCache[activePlaced.cardId];
-        const displaySrc = getFilteredImage(
-          imageCached,
-          activePlaced.filter,
-          activePlaced.threshold,
-          activePlaced.rotation,
-          activePlaced.brightness,
-          activePlaced.contrast,
-          activePlaced.cornerRadius,
-          activePlaced.w
-        );
-        cardEl.querySelector('img').src = displaySrc;
-      }
-    }
-  });
-
   // Corner Rounding slider
   elements.cardPropCornerRadius.addEventListener('input', (e) => {
     const activePlaced = state.placedCards.find(c => c.id === state.activePlacedCardId);
@@ -1799,18 +1858,24 @@ function setupInspectorControls() {
     if (pageEl) {
       const cardEl = pageEl.querySelector(`.placed-card[data-id="${activePlaced.id}"]`);
       if (cardEl) {
-        const imageCached = state.imageCache[activePlaced.cardId];
-        const displaySrc = getFilteredImage(
-          imageCached,
-          activePlaced.filter,
-          activePlaced.threshold,
-          activePlaced.rotation,
-          activePlaced.brightness,
-          activePlaced.contrast,
-          activePlaced.cornerRadius,
-          activePlaced.w
-        );
-        cardEl.querySelector('img').src = displaySrc;
+        const cardObj = state.processedCards.find(c => c.id === activePlaced.cardId);
+        if (cardObj) {
+          const imageCached = state.imageCache[activePlaced.cardId];
+          const displaySrc = getFilteredImage(
+            imageCached,
+            cardObj.filter || 'color',
+            cardObj.threshold !== undefined ? cardObj.threshold : 128,
+            activePlaced.rotation,
+            cardObj.brightness !== undefined ? cardObj.brightness : 100,
+            cardObj.contrast !== undefined ? cardObj.contrast : 100,
+            activePlaced.cornerRadius,
+            activePlaced.w,
+            cardObj.temperature || 0,
+            cardObj.tint || 0,
+            cardObj.sharpness || 0
+          );
+          cardEl.querySelector('img').src = displaySrc;
+        }
       }
     }
   });
@@ -1861,6 +1926,543 @@ function setupInspectorControls() {
     state.activePlacedCardId = null;
     renderWorkspace();
     showToast('Card removed from page layout', 'info');
+  });
+}
+
+/* ==========================================================================
+   Visual Enhancer Undo/Redo Engine
+   ========================================================================== */
+function pushToEnhancerHistory() {
+  const activeCard = state.processedCards.find(c => c.id === state.activeProcessedCardId);
+  if (!activeCard) return;
+
+  const snapshot = {
+    cardId: activeCard.id,
+    filter: activeCard.filter || 'color',
+    threshold: activeCard.threshold !== undefined ? activeCard.threshold : 128,
+    brightness: activeCard.brightness !== undefined ? activeCard.brightness : 100,
+    contrast: activeCard.contrast !== undefined ? activeCard.contrast : 100,
+    temperature: activeCard.temperature !== undefined ? activeCard.temperature : 0,
+    tint: activeCard.tint !== undefined ? activeCard.tint : 0,
+    sharpness: activeCard.sharpness !== undefined ? activeCard.sharpness : 0
+  };
+
+  enhancerHistory.push(snapshot);
+  if (enhancerHistory.length > 50) {
+    enhancerHistory.shift();
+  }
+
+  updateUndoButtonState();
+}
+
+function updateUndoButtonState() {
+  if (elements.btnEnhancerUndo) {
+    elements.btnEnhancerUndo.disabled = enhancerHistory.length === 0;
+  }
+}
+
+function triggerEnhancerUndo() {
+  if (enhancerHistory.length === 0) return;
+
+  const snapshot = enhancerHistory.pop();
+  const card = state.processedCards.find(c => c.id === snapshot.cardId);
+  if (card) {
+    card.filter = snapshot.filter;
+    card.threshold = snapshot.threshold;
+    card.brightness = snapshot.brightness;
+    card.contrast = snapshot.contrast;
+    card.temperature = snapshot.temperature;
+    card.tint = snapshot.tint;
+    card.sharpness = snapshot.sharpness !== undefined ? snapshot.sharpness : 0;
+
+    if (state.activeProcessedCardId !== card.id) {
+      state.activeProcessedCardId = card.id;
+      // Re-render and select the card
+      const items = document.querySelectorAll('.gallery-item');
+      items.forEach(item => {
+        if (item.getAttribute('data-id') === card.id) {
+          item.classList.add('active');
+        } else {
+          item.classList.remove('active');
+        }
+      });
+      renderEnhancerEditor();
+    } else {
+      updateEnhancerInspectorValues(card);
+      renderEnhancerCanvas();
+    }
+
+    syncCardVisuals(card.id);
+  }
+
+  updateUndoButtonState();
+  showToast('Undo applied', 'success');
+}
+
+/* ==========================================================================
+   Document Enhancer Dashboard control logic
+   ========================================================================== */
+function setWBPickerActive(active) {
+  state.wbPickerActive = active;
+  const btn = elements.btnEnhancerWBPicker;
+  const canvas = elements.enhancerCanvas;
+  if (!btn) return;
+  
+  if (active) {
+    btn.classList.add('active');
+    btn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 12px; height: 12px;">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25V9m10.5 0a2.25 2.25 0 012.25 2.25v7.5A2.25 2.25 0 0118.75 21H5.25a2.25 2.25 0 01-2.25-2.25v-7.5A2.25 2.25 0 015.25 9m13.5 0H5.25" />
+      </svg>
+      <span>Click Pixel...</span>
+    `;
+    if (canvas) canvas.style.cursor = 'crosshair';
+  } else {
+    btn.classList.remove('active');
+    btn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 12px; height: 12px;">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 4.5l3.75 3.75M18 6.75L9 15.75H5.25v-3.75L14.25 3A2.121 2.121 0 1118 6.75z" />
+      </svg>
+      <span>Pick Pixel</span>
+    `;
+    if (canvas) canvas.style.cursor = '';
+  }
+}
+
+function renderEnhancerEditor() {
+  setWBPickerActive(false);
+  const activeCard = state.processedCards.find(c => c.id === state.activeProcessedCardId);
+  
+  if (!activeCard) {
+    elements.enhancerEmptyNotice.style.display = 'flex';
+    elements.enhancerContainer.style.display = 'none';
+    elements.enhancerCardNameLabel.textContent = 'No card selected';
+    elements.enhancerInspector.style.display = 'none';
+    return;
+  }
+  
+  elements.enhancerEmptyNotice.style.display = 'none';
+  elements.enhancerContainer.style.display = 'block';
+  elements.enhancerInspector.style.display = 'flex';
+  elements.enhancerCardNameLabel.textContent = activeCard.name || 'Cropped Card';
+  
+  updateEnhancerInspectorValues(activeCard);
+  renderEnhancerCanvas();
+}
+
+function updateEnhancerInspectorValues(card) {
+  const filters = ['color', 'grayscale', 'photocopy'];
+  filters.forEach(f => {
+    const btn = document.getElementById(`enhancer-filter-btn-${f}`);
+    if (btn) {
+      if (card.filter === f) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    }
+  });
+  
+  if (card.filter === 'photocopy') {
+    elements.enhancerThresholdContainer.classList.add('active');
+    const thresholdVal = card.threshold !== undefined ? card.threshold : 128;
+    elements.enhancerPhotocopySlider.value = thresholdVal;
+    if (elements.enhancerThresholdNum) {
+      elements.enhancerThresholdNum.value = thresholdVal;
+    }
+  } else {
+    elements.enhancerThresholdContainer.classList.remove('active');
+  }
+  
+  const brightnessVal = card.brightness !== undefined ? card.brightness : 100;
+  elements.enhancerBrightness.value = brightnessVal;
+  if (elements.enhancerBrightnessNum) {
+    elements.enhancerBrightnessNum.value = brightnessVal;
+  }
+  
+  const contrastVal = card.contrast !== undefined ? card.contrast : 100;
+  elements.enhancerContrast.value = contrastVal;
+  if (elements.enhancerContrastNum) {
+    elements.enhancerContrastNum.value = contrastVal;
+  }
+  
+  const tempVal = card.temperature !== undefined ? card.temperature : 0;
+  elements.enhancerTemp.value = tempVal;
+  if (elements.enhancerTempNum) {
+    elements.enhancerTempNum.value = tempVal;
+  }
+  
+  const tintVal = card.tint !== undefined ? card.tint : 0;
+  elements.enhancerTint.value = tintVal;
+  if (elements.enhancerTintNum) {
+    elements.enhancerTintNum.value = tintVal;
+  }
+  
+  const sharpnessVal = card.sharpness !== undefined ? card.sharpness : 0;
+  elements.enhancerSharpness.value = sharpnessVal;
+  if (elements.enhancerSharpnessNum) {
+    elements.enhancerSharpnessNum.value = sharpnessVal;
+  }
+}
+
+function renderEnhancerCanvas() {
+  const activeCard = state.processedCards.find(c => c.id === state.activeProcessedCardId);
+  if (!activeCard) return;
+  
+  const canvas = elements.enhancerCanvas;
+  const ctx = canvas.getContext('2d');
+  const img = state.imageCache[activeCard.id];
+  
+  if (!img) return;
+  
+  const viewport = elements.enhancerViewport;
+  const padding = 40;
+  const maxW = viewport.clientWidth - padding;
+  const maxH = viewport.clientHeight - padding;
+  
+  const scale = Math.min(maxW / img.width, maxH / img.height);
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+  
+  canvas.width = w;
+  canvas.height = h;
+  
+  elements.enhancerContainer.style.width = `${w}px`;
+  elements.enhancerContainer.style.height = `${h}px`;
+  
+  // Align vertically
+  const vh = viewport.clientHeight;
+  const marginTop = Math.max(0, (vh - h - 40) / 2);
+  elements.enhancerContainer.style.marginTop = `${marginTop}px`;
+  
+  // Draw the original raw card image onto preview canvas synchronously
+  ctx.drawImage(img, 0, 0, w, h);
+  
+  // Apply visual adjustments directly on screen pixels in-place for 60fps performance
+  const imgData = ctx.getImageData(0, 0, w, h);
+  applyFiltersToPixelArray(
+    imgData.data,
+    w,
+    h,
+    activeCard.filter || 'color',
+    activeCard.threshold !== undefined ? activeCard.threshold : 128,
+    activeCard.brightness !== undefined ? activeCard.brightness : 100,
+    activeCard.contrast !== undefined ? activeCard.contrast : 100,
+    activeCard.temperature || 0,
+    activeCard.tint || 0,
+    activeCard.sharpness || 0
+  );
+  
+  ctx.putImageData(imgData, 0, 0);
+}
+
+function syncCardVisuals(cardId) {
+  const card = state.processedCards.find(c => c.id === cardId);
+  if (!card) return;
+  
+  const cachedImg = state.imageCache[cardId];
+  if (!cachedImg) return;
+  
+  // 1. Update Gallery Thumbnail
+  const imgEl = document.getElementById(`gallery-card-img-${cardId}`);
+  if (imgEl) {
+    const filteredUrl = getFilteredImage(
+      cachedImg,
+      card.filter || 'color',
+      card.threshold !== undefined ? card.threshold : 128,
+      0, // no rotation
+      card.brightness !== undefined ? card.brightness : 100,
+      card.contrast !== undefined ? card.contrast : 100,
+      0, // no corner rounding
+      cachedImg.width,
+      card.temperature || 0,
+      card.tint || 0,
+      card.sharpness || 0
+    );
+    imgEl.src = filteredUrl;
+  }
+  
+  // 2. Update Placed Cards on A4 compiler sheets
+  state.placedCards.forEach(placed => {
+    if (placed.cardId === cardId) {
+      const pageEl = document.getElementById(`a4-page-${placed.pageIndex}`);
+      if (pageEl) {
+        const cardEl = pageEl.querySelector(`.placed-card[data-id="${placed.id}"]`);
+        if (cardEl) {
+          const displaySrc = getFilteredImage(
+            cachedImg,
+            card.filter || 'color',
+            card.threshold !== undefined ? card.threshold : 128,
+            placed.rotation,
+            card.brightness !== undefined ? card.brightness : 100,
+            card.contrast !== undefined ? card.contrast : 100,
+            placed.cornerRadius,
+            placed.w,
+            card.temperature || 0,
+            card.tint || 0,
+            card.sharpness || 0
+          );
+          cardEl.querySelector('img').src = displaySrc;
+        }
+      }
+    }
+  });
+}
+
+function setupEnhancerControls() {
+  // Filters Click Events
+  const filters = ['color', 'grayscale', 'photocopy'];
+  filters.forEach(f => {
+    const btn = document.getElementById(`enhancer-filter-btn-${f}`);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        const activeCard = state.processedCards.find(c => c.id === state.activeProcessedCardId);
+        if (!activeCard) return;
+        if (activeCard.filter === f) return; // avoid duplicate history if clicking the active one
+        
+        pushToEnhancerHistory();
+        activeCard.filter = f;
+        updateEnhancerInspectorValues(activeCard);
+        renderEnhancerCanvas();
+        syncCardVisuals(activeCard.id);
+      });
+    }
+  });
+  
+  // Undo Button Event
+  if (elements.btnEnhancerUndo) {
+    elements.btnEnhancerUndo.addEventListener('click', triggerEnhancerUndo);
+  }
+  
+  // Helper for sliders and number inputs to split input and change events with bi-directional syncing
+  const setupSliderAndNumInput = (sliderEl, numInputEl, stateField) => {
+    if (!sliderEl || !numInputEl) return;
+    
+    let isDragging = false;
+    let isTyping = false;
+    
+    // SLIDER EVENTS
+    sliderEl.addEventListener('mousedown', () => {
+      pushToEnhancerHistory();
+      isDragging = true;
+    });
+    
+    sliderEl.addEventListener('touchstart', () => {
+      pushToEnhancerHistory();
+      isDragging = true;
+    });
+    
+    sliderEl.addEventListener('keydown', (e) => {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) {
+        pushToEnhancerHistory();
+      }
+    });
+    
+    sliderEl.addEventListener('input', (e) => {
+      const activeCard = state.processedCards.find(c => c.id === state.activeProcessedCardId);
+      if (!activeCard) return;
+      
+      const val = parseFloat(e.target.value);
+      activeCard[stateField] = val;
+      numInputEl.value = val;
+      
+      // Update screen synchronously (fast, 60fps, no black flashing)
+      renderEnhancerCanvas();
+    });
+    
+    sliderEl.addEventListener('change', (e) => {
+      const activeCard = state.processedCards.find(c => c.id === state.activeProcessedCardId);
+      if (!activeCard) return;
+      
+      isDragging = false;
+      // Sync gallery thumbnails and A4 sheets only when slider dragging is finished
+      syncCardVisuals(activeCard.id);
+    });
+    
+    // NUMBER INPUT EVENTS
+    numInputEl.addEventListener('focus', () => {
+      if (!isTyping) {
+        pushToEnhancerHistory();
+        isTyping = true;
+      }
+    });
+    
+    numInputEl.addEventListener('blur', () => {
+      isTyping = false;
+    });
+    
+    numInputEl.addEventListener('input', (e) => {
+      const activeCard = state.processedCards.find(c => c.id === state.activeProcessedCardId);
+      if (!activeCard) return;
+      
+      let val = parseFloat(e.target.value);
+      if (isNaN(val)) return;
+      
+      // Clamp values dynamically on typing
+      const min = parseFloat(numInputEl.min);
+      const max = parseFloat(numInputEl.max);
+      if (val < min) val = min;
+      if (val > max) val = max;
+      
+      activeCard[stateField] = val;
+      sliderEl.value = val;
+      
+      renderEnhancerCanvas();
+    });
+    
+    numInputEl.addEventListener('change', (e) => {
+      const activeCard = state.processedCards.find(c => c.id === state.activeProcessedCardId);
+      if (!activeCard) return;
+      
+      // Clamp on blur / commit
+      let val = parseFloat(e.target.value);
+      if (isNaN(val)) {
+        val = activeCard[stateField] !== undefined ? activeCard[stateField] : (stateField === 'brightness' || stateField === 'contrast' ? 100 : (stateField === 'threshold' ? 128 : 0));
+      }
+      const min = parseFloat(numInputEl.min);
+      const max = parseFloat(numInputEl.max);
+      if (val < min) val = min;
+      if (val > max) val = max;
+      e.target.value = val;
+      
+      syncCardVisuals(activeCard.id);
+    });
+  };
+  
+  setupSliderAndNumInput(elements.enhancerPhotocopySlider, elements.enhancerThresholdNum, 'threshold');
+  setupSliderAndNumInput(elements.enhancerBrightness, elements.enhancerBrightnessNum, 'brightness');
+  setupSliderAndNumInput(elements.enhancerContrast, elements.enhancerContrastNum, 'contrast');
+  setupSliderAndNumInput(elements.enhancerTemp, elements.enhancerTempNum, 'temperature');
+  setupSliderAndNumInput(elements.enhancerTint, elements.enhancerTintNum, 'tint');
+  setupSliderAndNumInput(elements.enhancerSharpness, elements.enhancerSharpnessNum, 'sharpness');
+
+  // Reset Buttons Event bindings
+  const bindResetButton = (btnId, sliderEl, numInputEl, defaultValue, stateField) => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        const activeCard = state.processedCards.find(c => c.id === state.activeProcessedCardId);
+        if (!activeCard) return;
+        
+        const currentVal = activeCard[stateField] !== undefined ? activeCard[stateField] : defaultValue;
+        if (currentVal === defaultValue) return;
+        
+        pushToEnhancerHistory();
+        activeCard[stateField] = defaultValue;
+        if (sliderEl) sliderEl.value = defaultValue;
+        if (numInputEl) numInputEl.value = defaultValue;
+        
+        renderEnhancerCanvas();
+        syncCardVisuals(activeCard.id);
+      });
+    }
+  };
+  
+  bindResetButton('btn-enhancer-threshold-reset', elements.enhancerPhotocopySlider, elements.enhancerThresholdNum, 128, 'threshold');
+  bindResetButton('btn-enhancer-brightness-reset', elements.enhancerBrightness, elements.enhancerBrightnessNum, 100, 'brightness');
+  bindResetButton('btn-enhancer-contrast-reset', elements.enhancerContrast, elements.enhancerContrastNum, 100, 'contrast');
+  bindResetButton('btn-enhancer-temp-reset', elements.enhancerTemp, elements.enhancerTempNum, 0, 'temperature');
+  bindResetButton('btn-enhancer-tint-reset', elements.enhancerTint, elements.enhancerTintNum, 0, 'tint');
+  bindResetButton('btn-enhancer-sharpness-reset', elements.enhancerSharpness, elements.enhancerSharpnessNum, 0, 'sharpness');
+
+  // WB Picker Click Event
+  if (elements.btnEnhancerWBPicker) {
+    elements.btnEnhancerWBPicker.addEventListener('click', () => {
+      const activeCard = state.processedCards.find(c => c.id === state.activeProcessedCardId);
+      if (!activeCard) return;
+      setWBPickerActive(!state.wbPickerActive);
+    });
+  }
+
+  // Canvas Click Event for WB sampling
+  if (elements.enhancerCanvas) {
+    elements.enhancerCanvas.addEventListener('click', (e) => {
+      if (!state.wbPickerActive) return;
+      
+      const activeCard = state.processedCards.find(c => c.id === state.activeProcessedCardId);
+      if (!activeCard) return;
+      
+      const img = state.imageCache[activeCard.id];
+      if (!img) return;
+      
+      const rect = elements.enhancerCanvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      
+      // Map to canvas coordinate space
+      const canvasX = (clickX / rect.width) * elements.enhancerCanvas.width;
+      const canvasY = (clickY / rect.height) * elements.enhancerCanvas.height;
+      
+      // Map to original image dimensions
+      const imgX = (canvasX / elements.enhancerCanvas.width) * img.width;
+      const imgY = (canvasY / elements.enhancerCanvas.height) * img.height;
+      
+      // Create offscreen canvas to sample raw pixel color
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = 1;
+      tempCanvas.height = 1;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(img, Math.floor(imgX), Math.floor(imgY), 1, 1, 0, 0, 1, 1);
+      const pixel = tempCtx.getImageData(0, 0, 1, 1).data;
+      const r = pixel[0];
+      const g = pixel[1];
+      const b = pixel[2];
+      
+      // Calibrate temp and tint to make pixel neutral
+      let temp = Math.round((b - r) / 1.2);
+      let tint = Math.round((r + b - 2 * g) / 1.8);
+      
+      // Clamp to valid range [-50, 50]
+      temp = Math.max(-50, Math.min(50, temp));
+      tint = Math.max(-50, Math.min(50, tint));
+      
+      // Record history snapshot before applying calibration
+      pushToEnhancerHistory();
+      
+      activeCard.temperature = temp;
+      activeCard.tint = tint;
+      
+      // Update UI and re-render
+      updateEnhancerInspectorValues(activeCard);
+      renderEnhancerCanvas();
+      syncCardVisuals(activeCard.id);
+      
+      setWBPickerActive(false);
+      showToast(`White Balance calibrated: Temp = ${temp}, Tint = ${tint}`, 'success');
+    });
+  }
+
+  // Ctrl+Z global shortcut inside visual enhancer
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      const isEnhancerActive = elements.enhancerPanel && elements.enhancerPanel.classList.contains('active');
+      if (isEnhancerActive && enhancerHistory.length > 0) {
+        e.preventDefault();
+        triggerEnhancerUndo();
+      }
+    }
+  });
+
+  // Export card JPEG
+  elements.btnEnhancerDownloadJpeg.addEventListener('click', () => {
+    if (state.activeProcessedCardId) {
+      downloadCardEnhanced(state.activeProcessedCardId, 'jpeg');
+    }
+  });
+
+  // Export card PNG
+  elements.btnEnhancerDownloadPng.addEventListener('click', () => {
+    if (state.activeProcessedCardId) {
+      downloadCardEnhanced(state.activeProcessedCardId, 'png');
+    }
+  });
+
+  // Place on A4 Canvas
+  elements.btnEnhancerPlace.addEventListener('click', () => {
+    if (state.activeProcessedCardId) {
+      addCardToActivePage(state.activeProcessedCardId);
+      elements.tabBtnCompiler.click();
+    }
   });
 }
 
@@ -2128,13 +2730,16 @@ function renderPageToCanvas(pageIndex) {
       const cachedImg = state.imageCache[placed.cardId];
       const filteredDataUrl = getFilteredImage(
         cachedImg,
-        placed.filter,
-        placed.threshold,
+        cardObj.filter || 'color',
+        cardObj.threshold !== undefined ? cardObj.threshold : 128,
         placed.rotation,
-        placed.brightness,
-        placed.contrast,
+        cardObj.brightness !== undefined ? cardObj.brightness : 100,
+        cardObj.contrast !== undefined ? cardObj.contrast : 100,
         placed.cornerRadius,
-        placed.w
+        placed.w,
+        cardObj.temperature || 0,
+        cardObj.tint || 0,
+        cardObj.sharpness || 0
       );
       
       const img = new Image();
@@ -2172,6 +2777,7 @@ window.addEventListener('DOMContentLoaded', () => {
   setupHandlesDrag();
   setupCropControls();
   setupInspectorControls();
+  setupEnhancerControls();
   setupAlignments();
   setupWorkspaceControls();
   setupPDFExport();
@@ -2190,3 +2796,157 @@ window.addEventListener('DOMContentLoaded', () => {
   
   showToast('App loaded. Secure, local scan compiler ready.', 'success');
 });
+
+/* ==========================================================================
+   Edge-Detection Card Boundary Auto-Detection (Vanilla JS Math)
+   ========================================================================== */
+function detectCardCorners(img) {
+  const canvas = document.createElement('canvas');
+  const size = 150; // Downscale to 150x150 for noise tolerance and instant execution
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, size, size);
+  
+  let imgData;
+  try {
+    imgData = ctx.getImageData(0, 0, size, size);
+  } catch (e) {
+    console.error("Local canvas tainted or security error reading pixels", e);
+    return [
+      { x: 0.1, y: 0.1 },
+      { x: 0.9, y: 0.1 },
+      { x: 0.9, y: 0.9 },
+      { x: 0.1, y: 0.9 }
+    ];
+  }
+  
+  const data = imgData.data;
+  const gray = new Uint8Array(size * size);
+  const grad = new Float32Array(size * size);
+  
+  // Grayscale conversion
+  for (let i = 0; i < size * size; i++) {
+    const idx = i * 4;
+    gray[i] = Math.round(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
+  }
+  
+  // Compute horizontal & vertical gradients (Sobel filter approximation)
+  let maxGrad = 0;
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const idx = y * size + x;
+      const dx = (
+        -gray[idx - size - 1] + gray[idx - size + 1]
+        - 2 * gray[idx - 1] + 2 * gray[idx + 1]
+        - gray[idx + size - 1] + gray[idx + size + 1]
+      );
+      const dy = (
+        -gray[idx - size - 1] - 2 * gray[idx - size] - gray[idx - size + 1]
+        + gray[idx + size - 1] + 2 * gray[idx + size] + gray[idx + size + 1]
+      );
+      
+      const val = Math.hypot(dx, dy);
+      grad[idx] = val;
+      if (val > maxGrad) {
+        maxGrad = val;
+      }
+    }
+  }
+  
+  // Simple Box Blur on gradients to reduce single-pixel contrast noise
+  const smoothGrad = new Float32Array(size * size);
+  for (let y = 2; y < size - 2; y++) {
+    for (let x = 2; x < size - 2; x++) {
+      let sum = 0;
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          sum += grad[(y + ky) * size + (x + kx)];
+        }
+      }
+      smoothGrad[y * size + x] = sum / 9;
+    }
+  }
+  
+  const center = size / 2;
+  const globalThreshold = maxGrad * 0.15; // Noise gate
+  
+  const corners = [
+    { startX: 0, startY: 0 },               // TL
+    { startX: size - 1, startY: 0 },        // TR
+    { startX: size - 1, startY: size - 1 }, // BR
+    { startX: 0, startY: size - 1 }         // BL
+  ];
+  
+  const detected = [];
+  
+  corners.forEach((c, idx) => {
+    // Scan outward from the center towards the corner c
+    const dx = c.startX - center;
+    const dy = c.startY - center;
+    const steps = Math.max(Math.abs(dx), Math.abs(dy));
+    const stepX = dx / steps;
+    const stepY = dy / steps;
+    
+    let peakVal = 0;
+    let peakIdx = -1;
+    
+    // Ignore first 18% of path to skip inner card text, stop at 92% to avoid photo borders
+    const startStep = Math.round(steps * 0.18);
+    const endStep = Math.round(steps * 0.92);
+    
+    // First pass: search outward from the center for the first local peak exceeding threshold
+    for (let step = startStep; step <= endStep; step++) {
+      const curX = Math.round(center + step * stepX);
+      const curY = Math.round(center + step * stepY);
+      const gVal = smoothGrad[curY * size + curX];
+      
+      if (gVal > globalThreshold) {
+        // Check if local peak
+        const prevX = Math.round(center + (step - 1) * stepX);
+        const prevY = Math.round(center + (step - 1) * stepY);
+        const nextX = Math.round(center + (step + 1) * stepX);
+        const nextY = Math.round(center + (step + 1) * stepY);
+        const prevVal = smoothGrad[prevY * size + prevX];
+        const nextVal = smoothGrad[nextY * size + nextX];
+        
+        if (gVal >= prevVal && gVal >= nextVal) {
+          peakIdx = step;
+          peakVal = gVal;
+          break; // Found first card boundary edge outward from center!
+        }
+      }
+    }
+    
+    // Fallback: if no local peak exceeded threshold, use the absolute maximum peak along the ray
+    if (peakIdx === -1) {
+      for (let step = startStep; step <= endStep; step++) {
+        const curX = Math.round(center + step * stepX);
+        const curY = Math.round(center + step * stepY);
+        const gVal = smoothGrad[curY * size + curX];
+        
+        if (gVal > peakVal) {
+          peakVal = gVal;
+          peakIdx = step;
+        }
+      }
+    }
+    
+    if (peakIdx !== -1 && peakVal > globalThreshold) {
+      const bestX = Math.round(center + peakIdx * stepX);
+      const bestY = Math.round(center + peakIdx * stepY);
+      detected.push({
+        x: parseFloat((bestX / size).toFixed(3)),
+        y: parseFloat((bestY / size).toFixed(3))
+      });
+    } else {
+      // Fallback standard coordinates
+      if (idx === 0) detected.push({ x: 0.1, y: 0.1 });
+      else if (idx === 1) detected.push({ x: 0.9, y: 0.1 });
+      else if (idx === 2) detected.push({ x: 0.9, y: 0.9 });
+      else detected.push({ x: 0.1, y: 0.9 });
+    }
+  });
+  
+  return detected;
+}

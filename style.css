@@ -291,10 +291,14 @@ h1, h2, h3, h4, h5, h6 {
   user-select: none;
 }
 
-.gallery-item:hover {
+.gallery-item:hover, .gallery-item.active {
   border-color: var(--accent-indigo);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
+}
+
+.gallery-item.active {
+  box-shadow: 0 0 0 2px var(--accent-indigo), var(--shadow-md);
 }
 
 .gallery-item:active {
@@ -504,6 +508,13 @@ h1, h2, h3, h4, h5, h6 {
 .btn-secondary:hover {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
+}
+
+.btn-secondary.active {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: var(--accent-indigo);
+  color: var(--text-primary);
+  box-shadow: 0 0 8px var(--accent-glow);
 }
 
 .editor-viewport {
@@ -1093,4 +1104,31 @@ h1, h2, h3, h4, h5, h6 {
   flex-direction: column;
   gap: 8px;
   margin-top: 10px;
+}
+
+/* Reset Button Style */
+.btn-reset {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  font-size: 0.85rem;
+  padding: 0;
+}
+
+.btn-reset:hover {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-indigo);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.btn-reset:active {
+  transform: scale(0.95);
 }
