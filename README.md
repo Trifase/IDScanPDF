@@ -24,8 +24,18 @@ Running entirely in the browser using vanilla JavaScript and HTML5 APIs, it requ
 - **Ratio Presets**: Quick options for ID-1 cards (85.6mm x 54.0mm), A4 pages, Square (1:1), free aspect, and Custom numeric ratios.
 - **Editor Zoom & Pan**: Zoom the editing area from 100% to 400% with scrollbars to inspect fine details on high-resolution camera uploads.
 
-### 🎛️ Image Processing Filters & Adjustments
+### 🎛️ Dedicated Document Enhancer Dashboard & Adjustments
 - **Filters**: Color, Grayscale, and Photocopy (high-contrast monochrome B&W thresholding).
+- **White Balance Eyedropper Sampler (Pick Pixel)**: Calibrates the white balance color cast automatically. Click the tool, hover the crosshair, and click any neutral (white/gray) section of the card to neutralize colors. Solves the temperature ($T$) and tint ($t$) equations:
+  $$T = \frac{B - R}{1.2}, \quad t = \frac{R + B - 2G}{1.8}$$
+- **High-Performance Text Sharpness Filter**: Parameterized 3x3 convolution sharpening filter ($0$ to $100$) that runs before other filters to produce crisp text boundaries, improving readability in photocopying.
+- **Bi-Directional Slider/Input Sync**: Range sliders are paired with typeable number inputs. Changing one updates the other in real-time with automatic out-of-bound clamping.
+- **Dedicated Reset Buttons (↺)**: Placed next to each manual input. Instantly restores adjustments back to default values.
+- **Photoshop-Style Undo History**: 
+  - Tracks card parameters in a global history stack.
+  - History is pushed at the *start* of slider drags (`mousedown` / `touchstart`), manual input focus, filter mode changes, and reset clicks.
+  - Undo button in header and global **Ctrl+Z** keydown shortcut revert modifications.
+  - Reverting changes automatically selects the modified card and switches focus back to it for immediate visual feedback.
 - **Brightness & Contrast Sliders**: Fine-tune parameters (50% to 150%) across all modes in real-time. Adjusting brightness and contrast in Photocopy mode clears background shadows before thresholding.
 - **Corner Rounding Slider**: Dynamically round card corners (0mm to 10mm) in the layout compiler.
 
