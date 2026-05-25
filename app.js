@@ -615,6 +615,29 @@ function setupHandlesDrag() {
           srcX - srcSliceSize / 2, srcY - srcSliceSize / 2, srcSliceSize, srcSliceSize,
           0, 0, lensW, lensH
         );
+        
+        // Draw adjacent dashed connector lines inside the magnifier as visual guides
+        const adjIndices = [(i + 1) % 4, (i + 3) % 4];
+        magCtx.strokeStyle = '#6366f1';
+        magCtx.lineWidth = 2.5;
+        magCtx.setLineDash([6, 4]);
+        
+        adjIndices.forEach(adjIdx => {
+          const adjX = cropHandles[adjIdx].x * img.width;
+          const adjY = cropHandles[adjIdx].y * img.height;
+          
+          const dx = adjX - srcX;
+          const dy = adjY - srcY;
+          
+          const destX = lensW / 2 + dx * (lensW / srcSliceSize);
+          const destY = lensH / 2 + dy * (lensH / srcSliceSize);
+          
+          magCtx.beginPath();
+          magCtx.moveTo(lensW / 2, lensH / 2);
+          magCtx.lineTo(destX, destY);
+          magCtx.stroke();
+        });
+        magCtx.setLineDash([]);
       };
       
       const onEnd = () => {
